@@ -16,13 +16,13 @@ window.CONFIG = {
   // Replace the placeholder values with the ones from your Firebase console.
   // Leave them as-is to run in local-preview mode.
   firebase: {
-    apiKey:            "PASTE_API_KEY",
-    authDomain:        "PASTE_PROJECT.firebaseapp.com",
-    databaseURL:       "https://PASTE_PROJECT-default-rtdb.firebaseio.com",
-    projectId:         "PASTE_PROJECT",
-    storageBucket:     "PASTE_PROJECT.appspot.com",
-    messagingSenderId: "PASTE_SENDER_ID",
-    appId:             "PASTE_APP_ID",
+    apiKey: "AIzaSyA_0XmGEIa6f60HHDitNKdhXMQuGxsf4zM",
+  authDomain: "therigatha-b6a11.firebaseapp.com",
+  databaseURL: "https://therigatha-b6a11-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "therigatha-b6a11",
+  storageBucket: "therigatha-b6a11.firebasestorage.app",
+  messagingSenderId: "1086445354068",
+  appId: "1:1086445354068:web:f38cbccd38d999650b41c1"
   },
 
   // ---- Session --------------------------------------------------------------
