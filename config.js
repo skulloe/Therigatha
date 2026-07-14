@@ -47,6 +47,6 @@ window.CONFIG = {
     "Isidāsī saw her lives as fruit of past actions. Do you feel shaped by your past? Say it in a few words.",
     "If you could speak to your past-life creature, what would you tell it?",
     "The Therīgāthā are women’s songs of finding freedom. What does freedom mean to you, in one line?",
-    "is "being a woman is suffering" a diagnosis of the world, or a claim about women themselves?",
+    "Is 'being a woman is suffering' a diagnosis of the world, or a claim about women themselves?",
   ],
 };
