@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Therīgāthā · Past-Life Avatars</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="participant">
+  <div id="localBanner" class="local-banner hidden">
+    <b>Preview mode.</b> Add your Firebase config in <b>config.js</b> so the whole audience can join. (Right now this only works in one browser.)
+  </div>
+
+  <div class="p-wrap">
+    <div class="p-head">
+      <h1 id="title">Therīgāthā</h1>
+      <p id="subtitle"></p>
+    </div>
+
+    <!-- ============ STEP 1: create avatar ============ -->
+    <section id="createCard" class="card">
+      <h2>Your past-life creature</h2>
+      <p class="prompt" id="avatarPrompt"></p>
+
+      <div class="tabs">
+        <button class="tab active" id="tabDraw">✏️ Draw</button>
+        <button class="tab" id="tabUpload">📷 Upload / Photo</button>
+      </div>
+
+      <!-- Draw -->
+      <div id="drawPane">
+        <div class="canvas-wrap">
+          <canvas id="drawCanvas" width="600" height="600"></canvas>
+        </div>
+        <div class="tools">
+          <div class="swatches" id="swatches"></div>
+          <label>Size <input type="range" id="brushSize" min="2" max="40" value="8" /></label>
+          <button class="linkbtn" id="undoBtn">Undo</button>
+          <button class="linkbtn" id="clearBtn">Clear</button>
+        </div>
+      </div>
+
+      <!-- Upload -->
+      <div id="uploadPane" class="hidden">
+        <div class="upload-zone" id="uploadZone">
+          <div id="uploadPlaceholder">
+            <div style="font-size:40px">🖼️</div>
+            Tap to upload a picture<br />or take a photo of your drawing
+          </div>
+          <img id="uploadPreview" class="hidden" alt="preview" />
+        </div>
+        <input type="file" id="fileInput" accept="image/*" class="hidden" />
+      </div>
+
+      <div class="field" style="margin-top:16px">
+        <label for="nameInput">Your name</label>
+        <input type="text" id="nameInput" maxlength="24" placeholder="e.g. Anita" />
+      </div>
+      <div class="field">
+        <label for="creatureInput">Your creature</label>
+        <input type="text" id="creatureInput" maxlength="28" placeholder="e.g. Monkey, Goat, Ox…" />
+      </div>
+
+      <button class="btn" id="joinBtn" disabled>Join the farm 🌾</button>
+      <div class="saved-flash" id="joinFlash"></div>
+    </section>
+
+    <!-- ============ STEP 2: you're in — answer questions ============ -->
+    <section id="liveCard" class="card hidden">
+      <div class="you-avatar">
+        <img id="youPic" alt="you" />
+        <div class="meta">
+          <b id="youName"></b>
+          <span id="youCreature"></span>
+        </div>
+      </div>
+
+      <div id="waitingBlock" class="waiting">
+        <div class="dot-farm">🐾</div>
+        <p>You're on the farm! Watch the big screen — questions will appear here as the presenter moves along.</p>
+      </div>
+
+      <div id="questionBlock" class="hidden">
+        <h2 id="qLabel">Question</h2>
+        <p class="prompt" id="qText"></p>
+        <div class="field">
+          <textarea id="answerInput" maxlength="140" placeholder="Type your short answer…"></textarea>
+        </div>
+        <button class="btn" id="answerBtn">Send to the screen ✨</button>
+        <div class="saved-flash" id="answerFlash"></div>
+      </div>
+
+      <button class="btn secondary" id="editAvatarBtn" style="margin-top:14px">Edit my avatar</button>
+    </section>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="config.js"></script>
+  <script src="store.js"></script>
+  <script>
+  (function () {
+    const cfg = window.CONFIG;
+    const Store = window.Store;
+
+    // ---- header ----
+    document.getElementById("title").textContent = cfg.title || "Therīgāthā";
+    document.getElementById("subtitle").textContent = cfg.subtitle || "";
+    document.getElementById("avatarPrompt").textContent = cfg.avatarPrompt || "";
+    if (!Store.configured) document.getElementById("localBanner").classList.remove("hidden");
+
+    // ==================================================================
+    //  Drawing canvas
+    // ==================================================================
+    const canvas = document.getElementById("drawCanvas");
+    const ctx = canvas.getContext("2d");
+    let drawing = false, color = "#2b2b33", size = 8;
+    let strokes = [], current = null;
+
+    const palette = ["#2b2b33","#c0483b","#e0902b","#f4c430","#5fa84f","#3f7fbf","#6a4a8f","#b5651d","#ffffff"];
+    const swatchWrap = document.getElementById("swatches");
+    palette.forEach((c, i) => {
+      const s = document.createElement("div");
+      s.className = "swatch" + (i === 0 ? " active" : "");
+      s.style.background = c;
+      s.onclick = () => {
+        color = c;
+        [...swatchWrap.children].forEach((x) => x.classList.remove("active"));
+        s.classList.add("active");
+      };
+      swatchWrap.appendChild(s);
+    });
+    document.getElementById("brushSize").oninput = (e) => (size = +e.target.value);
+
+    function repaint() {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      strokes.forEach((st) => {
+        ctx.strokeStyle = st.color;
+        ctx.lineWidth = st.size;
+        ctx.beginPath();
+        st.pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+        ctx.stroke();
+      });
+    }
+    repaint();
+
+    function pos(e) {
+      const r = canvas.getBoundingClientRect();
+      const t = e.touches ? e.touches[0] : e;
+      return {
+        x: ((t.clientX - r.left) / r.width) * canvas.width,
+        y: ((t.clientY - r.top) / r.height) * canvas.height,
+      };
+    }
+    function start(e) {
+      e.preventDefault();
+      drawing = true;
+      current = { color, size, pts: [pos(e)] };
+      strokes.push(current);
+      repaint();
+    }
+    function move(e) {
+      if (!drawing) return;
+      e.preventDefault();
+      current.pts.push(pos(e));
+      repaint();
+    }
+    function end() { drawing = false; current = null; }
+
+    canvas.addEventListener("mousedown", start);
+    canvas.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", end);
+    canvas.addEventListener("touchstart", start, { passive: false });
+    canvas.addEventListener("touchmove", move, { passive: false });
+    canvas.addEventListener("touchend", end);
+
+    document.getElementById("undoBtn").onclick = () => { strokes.pop(); repaint(); };
+    document.getElementById("clearBtn").onclick = () => { strokes = []; repaint(); };
+
+    // ==================================================================
+    //  Tabs (draw / upload)
+    // ==================================================================
+    let mode = "draw", uploadedImage = null;
+    const tabDraw = document.getElementById("tabDraw");
+    const tabUpload = document.getElementById("tabUpload");
+    tabDraw.onclick = () => setMode("draw");
+    tabUpload.onclick = () => setMode("upload");
+    function setMode(m) {
+      mode = m;
+      tabDraw.classList.toggle("active", m === "draw");
+      tabUpload.classList.toggle("active", m === "upload");
+      document.getElementById("drawPane").classList.toggle("hidden", m !== "draw");
+      document.getElementById("uploadPane").classList.toggle("hidden", m !== "upload");
+    }
+
+    const fileInput = document.getElementById("fileInput");
+    document.getElementById("uploadZone").onclick = () => fileInput.click();
+    fileInput.onchange = (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          uploadedImage = img;
+          const prev = document.getElementById("uploadPreview");
+          prev.src = img.src;
+          prev.classList.remove("hidden");
+          document.getElementById("uploadPlaceholder").classList.add("hidden");
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(f);
+    };
+
+    // ==================================================================
+    //  Produce a compact square avatar (base64) from draw or upload
+    // ==================================================================
+    function makeAvatar() {
+      const S = 320;
+      const out = document.createElement("canvas");
+      out.width = out.height = S;
+      const octx = out.getContext("2d");
+      octx.fillStyle = "#ffffff";
+      octx.fillRect(0, 0, S, S);
+      if (mode === "upload" && uploadedImage) {
+        // cover-fit into the square
+        const img = uploadedImage;
+        const scale = Math.max(S / img.width, S / img.height);
+        const w = img.width * scale, h = img.height * scale;
+        octx.drawImage(img, (S - w) / 2, (S - h) / 2, w, h);
+      } else {
+        octx.drawImage(canvas, 0, 0, S, S);
+      }
+      return out.toDataURL("image/jpeg", 0.8);
+    }
+
+    // ==================================================================
+    //  Validation + join
+    // ==================================================================
+    const nameInput = document.getElementById("nameInput");
+    const creatureInput = document.getElementById("creatureInput");
+    const joinBtn = document.getElementById("joinBtn");
+    function validate() {
+      const ok =
+        nameInput.value.trim() &&
+        creatureInput.value.trim() &&
+        (mode === "draw" ? strokes.length > 0 : uploadedImage);
+      joinBtn.disabled = !ok;
+    }
+    [nameInput, creatureInput].forEach((el) => el.addEventListener("input", validate));
+    canvas.addEventListener("mouseup", validate);
+    canvas.addEventListener("touchend", validate);
+    fileInput.addEventListener("change", () => setTimeout(validate, 200));
+    document.getElementById("clearBtn").addEventListener("click", validate);
+    document.getElementById("undoBtn").addEventListener("click", validate);
+
+    let myId = localStorage.getItem("therigatha:myid:" + cfg.sessionId) || null;
+
+    joinBtn.onclick = () => {
+      joinBtn.disabled = true;
+      const data = {
+        name: nameInput.value.trim(),
+        creature: creatureInput.value.trim(),
+        avatar: makeAvatar(),
+        joinedAt: Date.now(),
+        answers: {},
+      };
+      const done = (id) => {
+        myId = id;
+        localStorage.setItem("therigatha:myid:" + cfg.sessionId, id);
+        showLive(data);
+        document.getElementById("joinFlash").textContent = "You're on the farm! 🌾";
+      };
+      if (myId) {
+        Store.updateParticipant(myId, {
+          name: data.name, creature: data.creature, avatar: data.avatar,
+        }).then(() => done(myId));
+      } else {
+        Store.addParticipant(data).then(done);
+      }
+    };
+
+    // ==================================================================
+    //  Live stage (answer questions)
+    // ==================================================================
+    const createCard = document.getElementById("createCard");
+    const liveCard = document.getElementById("liveCard");
+
+    function showLive(data) {
+      createCard.classList.add("hidden");
+      liveCard.classList.remove("hidden");
+      document.getElementById("youPic").src = data.avatar;
+      document.getElementById("youName").textContent = data.name;
+      document.getElementById("youCreature").textContent = "the " + data.creature;
+    }
+
+    document.getElementById("editAvatarBtn").onclick = () => {
+      liveCard.classList.add("hidden");
+      createCard.classList.remove("hidden");
+    };
+
+    // React to presenter's current question.
+    // `myAnswers` is declared up here (not below) because LocalStore fires
+    // subscription callbacks synchronously and onMeta reads it.
+    let currentQ = -1;
+    let myAnswers = {};
+    const qBlock = document.getElementById("questionBlock");
+    const waitBlock = document.getElementById("waitingBlock");
+    const answerInput = document.getElementById("answerInput");
+
+    Store.onMeta((meta) => {
+      const stage = meta && meta.stage;
+      const q = meta && typeof meta.currentQuestion === "number" ? meta.currentQuestion : -1;
+      currentQ = q;
+      if (stage === "question" && q >= 0 && cfg.questions[q] != null) {
+        waitBlock.classList.add("hidden");
+        qBlock.classList.remove("hidden");
+        document.getElementById("qLabel").textContent = "Question " + (q + 1);
+        document.getElementById("qText").textContent = cfg.questions[q];
+        // pre-fill any prior answer
+        answerInput.value = (myAnswers && myAnswers[q]) || "";
+        document.getElementById("answerFlash").textContent = "";
+      } else {
+        qBlock.classList.add("hidden");
+        waitBlock.classList.remove("hidden");
+      }
+    });
+
+    // keep my own answers in sync (so edits pre-fill)
+    Store.onParticipants((parts) => {
+      if (myId && parts[myId]) myAnswers = parts[myId].answers || {};
+    });
+
+    document.getElementById("answerBtn").onclick = () => {
+      const text = answerInput.value.trim();
+      if (!text || currentQ < 0 || !myId) return;
+      Store.setAnswer(myId, currentQ, text).then(() => {
+        document.getElementById("answerFlash").textContent = "Sent to the big screen! ✨";
+      });
+    };
+
+    // If returning (already joined this session), jump straight to live view —
+    // but only once, so it never yanks the user out of "Edit my avatar".
+    let restored = false;
+    if (myId) {
+      Store.onParticipants(function restore(parts) {
+        if (!restored && myId && parts[myId]) {
+          restored = true;
+          showLive(parts[myId]);
+        }
+      });
+    }
+
+    validate();
+  })();
+  </script>
+</body>
+</html>

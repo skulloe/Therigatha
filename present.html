@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Presenter · Therīgāthā Farm</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="stage">
+    <!-- sky -->
+    <div class="sun"></div>
+    <div class="cloud" style="top:12vh;left:20vw;width:12vh;height:5vh"></div>
+    <div class="cloud" style="top:8vh;left:52vw;width:9vh;height:4vh"></div>
+    <div class="cloud" style="top:18vh;left:70vw;width:11vh;height:5vh"></div>
+
+    <!-- ground -->
+    <div class="field-ground"></div>
+    <div class="fence"></div>
+    <div class="barn"><div class="roof"></div><div class="body"></div><div class="door"></div></div>
+
+    <!-- header -->
+    <div class="stage-head">
+      <h1 id="stageTitle">Therīgāthā Farm</h1>
+      <div class="count"><span id="countNum">0</span> on the farm</div>
+    </div>
+
+    <!-- question / lobby banner -->
+    <div class="q-banner lobby" id="qBanner">
+      <div class="q-index" id="qIndex">Gathering</div>
+      <div class="q-text" id="qTextBig">Scan the QR code to draw your past-life creature…</div>
+    </div>
+
+    <!-- empty hint -->
+    <div class="empty-hint" id="emptyHint">
+      <div class="big">🐾🐒🐐🐄</div>
+      <div>Waiting for the first creatures to arrive…</div>
+    </div>
+
+    <!-- avatars -->
+    <div class="farm-avatars" id="farm"></div>
+  </div>
+
+  <!-- QR overlay -->
+  <div class="qr-overlay hidden" id="qrOverlay">
+    <button class="close" id="qrClose">×</button>
+    <h2>Join the farm 🌾</h2>
+    <div class="qr-box"><div id="qrCode"></div></div>
+    <div class="url" id="joinUrl"></div>
+    <div class="join-count"><span id="qrCount">0</span> joined so far</div>
+  </div>
+
+  <!-- presenter dock -->
+  <button class="dock-toggle" id="dockToggle" title="Show/hide controls">⚙️</button>
+  <div class="dock" id="dock">
+    <button id="qrBtn">📱 Show QR</button>
+    <span class="spacer"></span>
+    <button id="prevBtn" class="ghost">‹ Prev</button>
+    <button id="nextBtn" class="primary">Start ›</button>
+    <span class="spacer"></span>
+    <button id="resetBtn" class="ghost">Reset</button>
+  </div>
+
+  <div id="localBanner" class="local-banner hidden" style="position:fixed;top:0;left:0;right:0;z-index:30">
+    <b>Preview mode.</b> Add your Firebase config in <b>config.js</b> for a live audience across phones.
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="vendor/qrcode.js"></script>
+  <script src="config.js"></script>
+  <script src="store.js"></script>
+  <script>
+  (function () {
+    const cfg = window.CONFIG;
+    const Store = window.Store;
+    const N = (cfg.questions || []).length;
+
+    document.getElementById("stageTitle").textContent = cfg.title || "Therīgāthā Farm";
+    if (!Store.configured) document.getElementById("localBanner").classList.remove("hidden");
+
+    // ---- presenter state (mirrored to backend meta) ----
+    // stage: "lobby" | "question"; currentQuestion: -1 (lobby) .. N-1
+    // NOTE: declared before any Store subscription, because LocalStore fires
+    // its callbacks synchronously and renderAll() reads `participants`.
+    let stage = "lobby";
+    let currentQuestion = -1;
+    let participants = {};
+
+    Store.onMeta((meta) => {
+      if (meta) {
+        stage = meta.stage || "lobby";
+        currentQuestion =
+          typeof meta.currentQuestion === "number" ? meta.currentQuestion : -1;
+      } else {
+        stage = "lobby";
+        currentQuestion = -1;
+      }
+      renderBanner();
+      renderAll();
+    });
+    // ensure meta exists
+    Store.setMeta({ stage: "lobby", currentQuestion: -1 });
+
+    // ---- participants ----
+    Store.onParticipants((p) => {
+      participants = p || {};
+      renderAll();
+    });
+
+    // ==================================================================
+    //  Rendering
+    // ==================================================================
+    function renderBanner() {
+      const banner = document.getElementById("qBanner");
+      if (stage === "question" && currentQuestion >= 0) {
+        banner.classList.remove("lobby");
+        document.getElementById("qIndex").textContent =
+          "Question " + (currentQuestion + 1) + " of " + N;
+        document.getElementById("qTextBig").textContent =
+          cfg.questions[currentQuestion];
+      } else {
+        banner.classList.add("lobby");
+        document.getElementById("qIndex").textContent = "Gathering";
+        document.getElementById("qTextBig").textContent =
+          cfg.avatarPrompt || "Scan the QR code to join…";
+      }
+      // buttons
+      document.getElementById("prevBtn").disabled = currentQuestion < 0;
+      const next = document.getElementById("nextBtn");
+      if (stage === "lobby") next.textContent = "Start ›";
+      else if (currentQuestion >= N - 1) next.textContent = "Finish ✓";
+      else next.textContent = "Next ›";
+    }
+
+    function renderAll() {
+      const list = Object.keys(participants).map((id) => ({
+        id,
+        ...participants[id],
+      }));
+      list.sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+
+      document.getElementById("countNum").textContent = list.length;
+      document.getElementById("qrCount").textContent = list.length;
+      document.getElementById("emptyHint").style.display = list.length ? "none" : "block";
+
+      const farm = document.getElementById("farm");
+      farm.innerHTML = "";
+      list.forEach((p) => {
+        const fig = document.createElement("div");
+        fig.className = "avatar-fig";
+
+        const answer =
+          stage === "question" &&
+          currentQuestion >= 0 &&
+          p.answers &&
+          p.answers[currentQuestion];
+
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        if (answer) bubble.textContent = answer;
+        else bubble.style.display = "none";
+        fig.appendChild(bubble);
+
+        const img = document.createElement("img");
+        img.className = "avatar-pic";
+        img.src = p.avatar;
+        img.alt = p.name;
+        fig.appendChild(img);
+
+        const plate = document.createElement("div");
+        plate.className = "nameplate";
+        plate.innerHTML =
+          "<b></b><span></span>";
+        plate.querySelector("b").textContent = p.name;
+        plate.querySelector("span").textContent = "the " + p.creature;
+        fig.appendChild(plate);
+
+        farm.appendChild(fig);
+      });
+
+      // scale avatars down a touch if the farm is crowded
+      const scale = list.length > 14 ? 0.82 : list.length > 9 ? 0.92 : 1;
+      farm.style.setProperty("--s", scale);
+      [...farm.children].forEach((c) => (c.style.transform = "scale(" + scale + ")"));
+    }
+
+    // ==================================================================
+    //  Presenter controls
+    // ==================================================================
+    document.getElementById("nextBtn").onclick = () => {
+      if (stage === "lobby") {
+        Store.setMeta({ stage: "question", currentQuestion: 0 });
+      } else if (currentQuestion < N - 1) {
+        Store.setMeta({ stage: "question", currentQuestion: currentQuestion + 1 });
+      } else {
+        // finished — back to a celebratory lobby view
+        Store.setMeta({ stage: "lobby", currentQuestion: -1 });
+      }
+    };
+    document.getElementById("prevBtn").onclick = () => {
+      if (currentQuestion <= 0) {
+        Store.setMeta({ stage: "lobby", currentQuestion: -1 });
+      } else {
+        Store.setMeta({ stage: "question", currentQuestion: currentQuestion - 1 });
+      }
+    };
+    document.getElementById("resetBtn").onclick = () => {
+      if (confirm("Clear ALL avatars and answers and start a fresh farm?")) {
+        Store.reset().then(() => {
+          Store.setMeta({ stage: "lobby", currentQuestion: -1 });
+        });
+      }
+    };
+
+    // dock show/hide
+    document.getElementById("dockToggle").onclick = () =>
+      document.getElementById("dock").classList.toggle("hidden-dock");
+
+    // keyboard: → next, ← prev, q = QR
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight") document.getElementById("nextBtn").click();
+      else if (e.key === "ArrowLeft") document.getElementById("prevBtn").click();
+      else if (e.key.toLowerCase() === "q") toggleQR();
+    });
+
+    // ==================================================================
+    //  QR code
+    // ==================================================================
+    const joinUrl = location.href.replace(/present\.html.*/, "index.html");
+    document.getElementById("joinUrl").textContent = joinUrl;
+    let qrDrawn = false;
+    function drawQR() {
+      if (qrDrawn) return;
+      try {
+        const qr = qrcode(0, "M"); // typeNumber 0 = auto-size, error-correction M
+        qr.addData(joinUrl);
+        qr.make();
+        document.getElementById("qrCode").innerHTML = qr.createImgTag(6, 8);
+        qrDrawn = true;
+      } catch (e) {
+        document.getElementById("qrCode").textContent =
+          "Open this link:\n" + joinUrl;
+      }
+    }
+    function toggleQR() {
+      const ov = document.getElementById("qrOverlay");
+      const show = ov.classList.contains("hidden");
+      if (show) drawQR();
+      ov.classList.toggle("hidden");
+    }
+    document.getElementById("qrBtn").onclick = toggleQR;
+    document.getElementById("qrClose").onclick = toggleQR;
+
+    // Show QR automatically on load so people can join right away
+    setTimeout(() => { drawQR(); document.getElementById("qrOverlay").classList.remove("hidden"); }, 400);
+  })();
+  </script>
+</body>
+</html>
