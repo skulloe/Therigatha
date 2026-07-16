@@ -42,11 +42,11 @@ window.CONFIG = {
   // Add, remove, or reword freely. Keep them short — answers appear as
   // speech bubbles above each avatar on the big screen.
   questions: [
-    "Why did you choose this creature? What drew you to it?",
-    "What is one quality of your creature that you also see in yourself?",
-    "Isidāsī saw her lives as fruit of past actions. Do you feel shaped by your past? Say it in a few words.",
-    "If you could speak to your past-life creature, what would you tell it?",
-    "The Therīgāthā are women’s songs of finding freedom. What does freedom mean to you, in one line?",
-    "Is 'being a woman is suffering' a diagnosis of the world, or a claim about women themselves?",
+    "What do you think life was like for women over 2,000 years ago?",
+    "Do you think the female sangha was genuinely progressive, or was it simply tolerated under strict conditions?",
+    "What do you notice?",
+    "In one word: what's the hardest thing you would have to give up to feel completely free?",
+    "Is the sangha's 'sexual equality' a real break from patriarchy, or a different hierarchy replacing the old one?",
+    "How far would someone have to go before you truly believed that they were more than just their appearance?",
   ],
 };
